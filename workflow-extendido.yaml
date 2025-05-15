@@ -1,0 +1,57 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: seguridad-pipeline-ext-
+spec:
+  entrypoint: seguridad-ci
+  templates:
+    - name: seguridad-ci
+      steps:
+        - - name: semgrep-scan
+            template: semgrep
+        - - name: trivy-scan
+            template: trivy
+        - - name: syft-scan
+            template: syft
+        - - name: nuclei-scan
+            template: nuclei
+
+    - name: semgrep
+      container:
+        image: returntocorp/semgrep
+        command: [sh, -c]
+        args: ["semgrep --config=auto /mnt/code"]
+        volumeMounts:
+          - name: code-volume
+            mountPath: /mnt/code
+
+    - name: trivy
+      container:
+        image: aquasec/trivy
+        command: [sh, -c]
+        args: ["trivy fs /mnt/code"]
+        volumeMounts:
+          - name: code-volume
+            mountPath: /mnt/code
+
+    - name: syft
+      container:
+        image: anchore/syft
+        command: [sh, -c]
+        args: ["syft dir:/mnt/code -o table"]
+        volumeMounts:
+          - name: code-volume
+            mountPath: /mnt/code
+
+    - name: nuclei
+      container:
+        image: projectdiscovery/nuclei
+        command: [sh, -c]
+        args: ["nuclei -u http://app:9090 -t vulnerabilities/"]
+        volumeMounts:
+          - name: code-volume
+            mountPath: /mnt/code
+
+  volumes:
+    - name: code-volume
+      emptyDir: {}
