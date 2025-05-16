@@ -12,7 +12,7 @@ scan-semgrep:
 	docker run --rm -v ${PWD}/app:/src returntocorp/semgrep semgrep --config=auto /src
 
 scan-trivy:
-	trivy fs ./app
+	docker run --rm -v ${PWD}/app:/app aquasec/trivy fs /app
 
 run-scans: scan-semgrep scan-trivy
 
