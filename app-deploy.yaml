@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vuln-node-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vuln-node-app
+  template:
+    metadata:
+      labels:
+        app: vuln-node-app
+    spec:
+      containers:
+      - name: vuln-node-app
+        image: lab-node:v1
+        ports:
+        - containerPort: 9090
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vuln-node-service
+spec:
+  selector:
+    app: vuln-node-app
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 9090
+  type: NodePort
