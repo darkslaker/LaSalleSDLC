@@ -8,6 +8,7 @@ Este repositorio contiene una aplicación vulnerable y un pipeline de seguridad 
 - `pipeline.yaml` - Argo Workflow para ejecutar Semgrep y Trivy
 - `chart/` - (Opcional) Helm chart si deseas extender el despliegue
 - `README.md` - Guía del laboratorio
+- `bootstrap.sh` - Script en bash version beta que instala los paquetes requeridos
 
 ## 🚀 Requisitos
 
