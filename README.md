@@ -50,6 +50,8 @@ kubectl apply -n seguridad -f pipeline.yaml
 - https://argoproj.github.io/argo-workflows/
 - https://minikube.sigs.k8s.io/docs/
 
+````markdown
+```mermaid
 graph TD
     User((👨‍💻 Estudiante)) -->|git push| Repo[GitHub Repo]
     Repo -->|Trigger| Argo[🐙 Argo Workflows]
