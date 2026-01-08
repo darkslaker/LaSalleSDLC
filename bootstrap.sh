@@ -22,155 +22,248 @@
 #   --repo URL       Repositorio Git a clonar (default: oficial de la clase)
 #   --skip-docker    No intenta instalar Docker/Podman (ya instalado o en rootless)
 #   --help           Muestra esta ayuda
-#
-set -euo pipefail
-trap 'echo -e "\n[✖] Error en la línea $LINENO. Abortando."' ERR
 
-DEFAULT_REPO="https://github.com/darkslaker/LaSalleSDLC.git"
-REPO_URL="$DEFAULT_REPO"
-USE_KIND="auto"          # auto|true|false
+set -e # Detener el script si hay errores
+
+# --- Variables Globales ---
+REPO_URL="https://github.com/darkslaker/LaSalleSDLC.git"
+USE_KIND=false
+USE_MINIKUBE=false
 SKIP_DOCKER=false
+OS_TYPE=""
+ARCH_TYPE=""
+DISTRO=""
 
-# ---------------------------- Funciones utilitarias ---------------------------
-command_exists() { command -v "$1" &>/dev/null; }
-log()   { printf "\e[32m[✔] %s\e[0m\n" "$*"; }
-warn()  { printf "\e[33m[!] %s\e[0m\n" "$*"; }
-info()  { printf "[i] %s\n" "$*"; }
+# Colores
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
 
-usage() {
-  grep -E "^#   " "$0" | sed 's/^#   //'
-  exit 1
+# --- Funciones de Ayuda ---
+log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+print_help() {
+    # Muestra el encabezado del archivo
+    sed -n '2,17p' "$0"
 }
 
-# ---------------------------- Parseo de argumentos ---------------------------
-while [[ ${1:-} ]]; do
-  case "$1" in
-    --kind)      USE_KIND="true" ;;
-    --minikube)  USE_KIND="false";;
-    --repo)      REPO_URL="$2"; shift ;;
-    --skip-docker) SKIP_DOCKER=true ;;
-    -h|--help)   usage ;;
-    *) warn "Opción desconocida: $1"; usage ;;
-  esac
-  shift
+# --- Parseo de Argumentos ---
+while [[ $# -gt 0 ]]; do
+    key="$1"
+    case $key in
+        --kind)
+        USE_KIND=true
+        shift
+        ;;
+        --minikube)
+        USE_MINIKUBE=true
+        shift
+        ;;
+        --repo)
+        REPO_URL="$2"
+        shift 2
+        ;;
+        --skip-docker)
+        SKIP_DOCKER=true
+        shift
+        ;;
+        --help)
+        print_help
+        exit 0
+        ;;
+        *)
+        log_error "Opción desconocida: $1"
+        print_help
+        exit 1
+        ;;
+    esac
 done
 
-OS=$(uname -s)
-ARCH=$(uname -m)
+# --- 1. Detección del Sistema ---
+detect_os() {
+    OS_TYPE=$(uname -s)
+    ARCH_TYPE=$(uname -m)
 
-# ---------------------- Instalación de dependencias base ----------------------
-install_pkg_linux() {
-  if command_exists apt-get; then sudo apt-get update -y && sudo apt-get install -y "$@"
-  elif command_exists dnf; then sudo dnf install -y "$@"
-  elif command_exists yum; then sudo yum install -y "$@"
-  else
-    warn "No se encontró un gestor de paquetes compatible (apt, yum, dnf). Instala manualmente: $*"; exit 1
-  fi
+    if [[ "$OS_TYPE" == "Linux" ]]; then
+        if [ -f /etc/os-release ]; then
+            . /etc/os-release
+            DISTRO=$ID
+        fi
+    elif [[ "$OS_TYPE" == "Darwin" ]]; then
+        DISTRO="macos"
+    else
+        log_error "Sistema operativo no soportado: $OS_TYPE"
+        exit 1
+    fi
+    
+    log_info "Sistema detectado: $OS_TYPE ($DISTRO) en arquitectura $ARCH_TYPE"
 }
 
-install_docker() {
-  if command_exists docker || command_exists podman; then
-    info "Docker/Podman ya instalado."
-    return
-  fi
-  if [[ "$OS" == "Darwin" ]]; then
-    brew install --cask docker
-    log "Docker Desktop instalado. Inicia la app para activar el daemon."
-  else
-    curl -fsSL https://get.docker.com | sudo bash
-    sudo usermod -aG docker "$USER"
-    log "Se instaló Docker Engine. Cierra sesión o ejecuta 'newgrp docker'."
-  fi
+# --- 2. Instalación de Dependencias ---
+install_dependencies() {
+    log_info "Verificando dependencias..."
+
+    # Docker
+    if [[ "$SKIP_DOCKER" == "false" ]]; then
+        if ! command -v docker &> /dev/null; then
+            log_warn "Docker no encontrado. Intentando instalar..."
+            if [[ "$DISTRO" == "ubuntu" || "$DISTRO" == "debian" ]]; then
+                sudo apt-get update && sudo apt-get install -y docker.io
+                sudo usermod -aG docker $USER
+                log_warn "Docker instalado. ES POSIBLE QUE NECESITES REINICIAR LA SESIÓN para usar docker sin sudo."
+            elif [[ "$DISTRO" == "fedora" ]]; then
+                sudo dnf install -y docker
+                sudo systemctl start docker && sudo systemctl enable docker
+                sudo usermod -aG docker $USER
+            elif [[ "$DISTRO" == "macos" ]]; then
+                if command -v brew &> /dev/null; then
+                    brew install --cask docker
+                else
+                    log_error "Homebrew no encontrado. Instala Docker Desktop manualmente: https://www.docker.com/products/docker-desktop/"
+                    exit 1
+                fi
+            fi
+        else
+            log_success "Docker ya está instalado."
+        fi
+    fi
+
+    # Kubectl
+    if ! command -v kubectl &> /dev/null; then
+        log_info "Instalando Kubectl..."
+        if [[ "$OS_TYPE" == "Linux" ]]; then
+            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+            sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+            rm kubectl
+        elif [[ "$OS_TYPE" == "Darwin" ]]; then
+            brew install kubectl
+        fi
+    fi
+
+    # Helm
+    if ! command -v helm &> /dev/null; then
+        log_info "Instalando Helm..."
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    fi
 }
 
-install_kind() {
-  if command_exists kind; then info "Kind ya instalado"; return; fi
-  curl -Lo "$HOME/kind" https://kind.sigs.k8s.io/dl/v0.23.0/kind-$(uname | tr '[:upper:]' '[:lower:]')-$(uname -m)
-  chmod +x "$HOME/kind" && sudo mv "$HOME/kind" /usr/local/bin/
-  log "Kind instalado."
+# --- 3. Gestión del Repositorio ---
+setup_repo() {
+    DIR_NAME=$(basename "$REPO_URL" .git)
+    
+    # Si ya estamos dentro del repo, no hacemos nada
+    if [ -d ".git" ] && grep -q "LaSalleSDLC" .git/config; then
+        log_info "Ya estás dentro del repositorio."
+        git pull origin main
+    elif [ -d "$DIR_NAME" ]; then
+        log_info "Directorio $DIR_NAME encontrado. Actualizando..."
+        cd "$DIR_NAME"
+        git pull origin main
+    else
+        log_info "Clonando repositorio $REPO_URL..."
+        git clone "$REPO_URL"
+        cd "$DIR_NAME"
+    fi
 }
 
-install_minikube() {
-  if command_exists minikube; then info "Minikube ya instalado"; return; fi
-  if [[ "$OS" == "Darwin" ]]; then
-    brew install minikube
-  else
-    curl -Lo minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-    chmod +x minikube && sudo mv minikube /usr/local/bin/
-  fi
-  log "Minikube instalado."
+# --- 4. Creación del Clúster ---
+setup_cluster() {
+    # Verificar Docker Daemon
+    if ! docker info > /dev/null 2>&1; then
+        log_error "El daemon de Docker no está corriendo. Inícialo e intenta de nuevo."
+        exit 1
+    fi
+
+    # Lógica de selección de Cluster Tool
+    # Por defecto usamos Minikube, salvo en Apple Silicon (ARM64) donde Kind suele ser más estable/rápido,
+    # a menos que el usuario fuerce lo contrario.
+    
+    TOOL="minikube"
+    
+    if [[ "$USE_KIND" == "true" ]]; then
+        TOOL="kind"
+    elif [[ "$USE_MINIKUBE" == "true" ]]; then
+        TOOL="minikube"
+    elif [[ "$ARCH_TYPE" == "arm64" && "$OS_TYPE" == "Darwin" ]]; then
+        log_info "Apple Silicon detectado. Se sugiere usar Kind, pero intentaremos Minikube (driver docker) por compatibilidad."
+        TOOL="minikube" 
+    fi
+
+    log_info "Preparando clúster usando: $TOOL"
+
+    if [[ "$TOOL" == "minikube" ]]; then
+        if ! command -v minikube &> /dev/null; then
+            log_info "Instalando Minikube..."
+            if [[ "$OS_TYPE" == "Linux" ]]; then
+                curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+                sudo install minikube-linux-amd64 /usr/local/bin/minikube
+            elif [[ "$OS_TYPE" == "Darwin" ]]; then
+                brew install minikube
+            fi
+        fi
+        
+        if minikube status | grep -q "Running"; then
+            log_success "Minikube ya está corriendo."
+        else
+            minikube start --driver=docker --cpus=4 --memory=8192
+        fi
+    else
+        # Instalación/Uso de KIND
+        if ! command -v kind &> /dev/null; then
+            log_info "Instalando Kind..."
+            if [[ "$OS_TYPE" == "Darwin" ]]; then brew install kind; fi
+            if [[ "$OS_TYPE" == "Linux" ]]; then 
+                curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+                chmod +x ./kind
+                sudo mv ./kind /usr/local/bin/kind
+            fi
+        fi
+        
+        if ! kind get clusters | grep -q "lasalle-lab"; then
+            kind create cluster --name lasalle-lab
+        else
+            log_success "Clúster Kind 'lasalle-lab' ya existe."
+        fi
+    fi
+
+    # Crear Namespace
+    log_info "Configurando namespace 'seguridad'..."
+    kubectl create namespace seguridad --dry-run=client -o yaml | kubectl apply -f -
 }
 
-install_kubectl() {
-  if command_exists kubectl; then info "kubectl ya instalado"; return; fi
-  curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/$(uname | tr '[:upper:]' '[:lower:]')/amd64/kubectl"
-  chmod +x kubectl && sudo mv kubectl /usr/local/bin/
-  log "kubectl instalado."
+# --- 5. Ejecución Final ---
+run_makefile() {
+    if [ -f "Makefile" ]; then
+        log_info "Makefile detectado. Ejecutando configuración inicial..."
+        # Asumiendo que existe un target 'setup' o 'install'. Si no, usa 'all' o nada.
+        # Ajusta esto según lo que tengas en tu Makefile real.
+        if grep -q "setup:" Makefile; then
+            make setup
+        else
+            log_warn "No se encontró target 'setup' en Makefile. Saltando."
+        fi
+    else
+        # Si no hay makefile, instalamos Argo manualmente como fallback
+        log_info "No se encontró Makefile. Instalando Argo Workflows manualmente..."
+        helm repo add argo https://argoproj.github.io/argo-helm
+        helm repo update
+        helm upgrade --install argo argo/argo-workflows -n argo --create-namespace --set server.serviceType=LoadBalancer
+    fi
 }
 
-install_helm() {
-  if command_exists helm; then info "Helm ya instalado"; return; fi
-  curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-  log "Helm instalado."
-}
+# --- Main ---
+detect_os
+install_dependencies
+setup_repo
+setup_cluster
+run_makefile
 
-# --------------------------- Lógica de instalación ----------------------------
-log "Detectando plataforma: $OS $ARCH"
-
-if [[ "$OS" == "Darwin" ]]; then
-  if ! command_exists brew; then
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    eval "$($(brew --prefix)/bin/brew shellenv)"
-  fi
-fi
-
-[[ "$SKIP_DOCKER" == true ]] || install_docker
-install_kubectl
-install_helm
-
-# Decidir Kind/Minikube
-if [[ "$USE_KIND" == "auto" ]]; then
-  if [[ "$OS" == "Darwin" && "$ARCH" == "arm64" ]]; then
-    USE_KIND="true"
-  else
-    USE_KIND="false"
-  fi
-fi
-
-if [[ "$USE_KIND" == "true" ]]; then
-  install_kind
-else
-  if [[ "$ARCH" != "x86_64" ]]; then warn "Minikube no soporta oficialmente $ARCH. Cambiando a Kind."; install_kind
-  else install_minikube; fi
-fi
-
-# ---------------------------- Crear clúster local -----------------------------
-create_cluster_kind() {
-  if kind get clusters | grep -q seguridad-lab; then info "Cluster Kind seguridad-lab ya existe"; return; fi
-  kind create cluster --name seguridad-lab --image kindest/node:v1.30.0 --wait 2m
-}
-
-create_cluster_minikube() {
-  if minikube profile list | grep -q seguridad-lab; then info "Perfil Minikube seguridad-lab ya existe"; return; fi
-  minikube start -p seguridad-lab --kubernetes-version=stable --driver=docker --memory=4096 --cpus=2
-}
-
-if [[ "$USE_KIND" == "true" ]]; then create_cluster_kind; else create_cluster_minikube; fi
-
-# ------------------------------ Clonar repositorio ----------------------------
-if [[ -d "$LAB_DIR" ]]; then
-  info "Repositorio existente. Haciendo 'git pull'."
-  git -C "$LAB_DIR" pull --ff-only
-else
-  git clone "$REPO_URL" "$LAB_DIR"
-fi
-
-cd "$LAB_DIR"
-
-# -------------------------- Post‑instalación opcional -------------------------
-if command_exists make && grep -qE '^setup:' Makefile; then
-  log "Ejecutando 'make setup'…"
-  make setup
-fi
-
-log "¡Entorno listo! Utiliza 'kubectl get pods -A' para verificar que todo esté en marcha."
+log_success "==========================================="
+log_success "   Laboratorio LaSalle desplegado con éxito"
+log_success "==========================================="
+log_info "Prueba ejecutar: kubectl get pods -n argo"

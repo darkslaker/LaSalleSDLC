@@ -50,6 +50,26 @@ kubectl apply -n seguridad -f pipeline.yaml
 - https://argoproj.github.io/argo-workflows/
 - https://minikube.sigs.k8s.io/docs/
 
+graph TD
+    User((👨‍💻 Estudiante)) -->|git push| Repo[GitHub Repo]
+    Repo -->|Trigger| Argo[🐙 Argo Workflows]
+    
+    subgraph Pipeline de Seguridad
+        direction TB
+        Argo --> Clone[📥 Clone Code]
+        Clone --> SAST[🔍 Semgrep (SAST)]
+        Clone --> SCA[📦 Trivy (Dependencias)]
+        
+        SAST --> Decision{¿Vulnerables?}
+        SCA --> Decision
+    end
+    
+    Decision -->|No| Pass[✅ Aprobado]
+    Decision -->|Sí| Fail[❌ Fallo / Reporte]
+    
+    classDef tools fill:#f9f,stroke:#333,stroke-width:2px;
+    class Repo,Argo,SAST,SCA tools;
+
 ## 📬 ¿Preguntas?
 
 Si eres alumno usa el canal oficial de la matareria para contactarme en otro caso abre un issue en este repo.

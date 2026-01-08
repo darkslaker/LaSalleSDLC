@@ -1,0 +1,29 @@
+{
+  "name": "LaSalle DevSecOps Lab",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+  "features": {
+    // Instalamos Docker dentro de Docker (necesario para Minikube)
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "enableNonRootDocker": "true",
+      "moby": "true"
+    },
+    // Instalamos las herramientas de K8s automáticamente
+    "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
+      "version": "latest",
+      "minikube": "latest",
+      "helm": "latest"
+    }
+  },
+  // Extensiones útiles para VS Code que se instalarán solas
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        "redhat.vscode-yaml",
+        "tamasfe.even-better-toml"
+      ]
+    }
+  },
+  // Cuando la máquina termine de crearse, iniciamos Minikube automáticamente
+  "postCreateCommand": "minikube start --driver=docker && echo 'Entorno listo! Ejecuta kubectl get pods para probar'"
+}
