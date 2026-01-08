@@ -50,7 +50,7 @@ kubectl apply -n seguridad -f pipeline.yaml
 - https://argoproj.github.io/argo-workflows/
 - https://minikube.sigs.k8s.io/docs/
 
-````markdown
+
 ```mermaid
 graph TD
     User((👨‍💻 Estudiante)) -->|git push| Repo[GitHub Repo]
@@ -59,8 +59,8 @@ graph TD
     subgraph Pipeline de Seguridad
         direction TB
         Argo --> Clone[📥 Clone Code]
-        Clone --> SAST[🔍 Semgrep (SAST)]
-        Clone --> SCA[📦 Trivy (Dependencias)]
+        Clone --> SAST["🔍 Semgrep (SAST)"]
+        Clone --> SCA["📦 Trivy (Dependencias)"]
         
         SAST --> Decision{¿Vulnerables?}
         SCA --> Decision
@@ -71,6 +71,7 @@ graph TD
     
     classDef tools fill:#f9f,stroke:#333,stroke-width:2px;
     class Repo,Argo,SAST,SCA tools;
+```
 
 ## 📬 ¿Preguntas?
 
