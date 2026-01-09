@@ -62,14 +62,14 @@ Para no confundirnos, aquí está la diferencia clave entre Semgrep y Trivy en n
 
 ```mermaid
 graph LR
-    subgraph APP [Tu Aplicación]
-        Code[📝 Tu Código Fuente]
-        Libs[📚 Librerías (NPM/Pip)]
-        OS[🐧 Sistema Operativo Base]
+    subgraph APP ["Tu Aplicación"]
+        Code["📝 Tu Código Fuente"]
+        Libs["📚 Librerías (NPM/Pip)"]
+        OS["🐧 Sistema Operativo Base"]
     end
 
-    Code -->|Analizado por| SAST(🔍 Semgrep)
-    Libs -->|Analizado por| SCA(📦 Trivy)
+    Code -->|Analizado por| SAST("🔍 Semgrep")
+    Libs -->|Analizado por| SCA("📦 Trivy")
     OS -->|Analizado por| SCA
 
     style SAST fill:#ffecb3,stroke:#ff6f00,stroke-width:2px
