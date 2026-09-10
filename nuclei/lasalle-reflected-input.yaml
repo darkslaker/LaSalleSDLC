@@ -1,0 +1,23 @@
+id: lasalle-reflected-user-input
+
+info:
+  name: Reflected user input in HTML response
+  author: LaSalle
+  severity: medium
+  description: Detects direct reflection of attacker-controlled HTML in the lab application.
+  tags: xss,reflection,lab
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/?input=%3Cscript%3Elasalle-xss%3C%2Fscript%3E"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        part: body
+        words:
+          - "<script>lasalle-xss</script>"

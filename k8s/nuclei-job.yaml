@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nuclei-scan
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: nuclei
+          image: projectdiscovery/nuclei:latest
+          args:
+            - -u
+            - http://vuln-node-service
+            - -t
+            - /templates/lasalle-reflected-input.yaml
+            - -silent
+          volumeMounts:
+            - name: templates
+              mountPath: /templates
+              readOnly: true
+      volumes:
+        - name: templates
+          configMap:
+            name: nuclei-lab-template
