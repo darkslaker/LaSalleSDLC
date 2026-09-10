@@ -13,10 +13,17 @@ spec:
         app: vuln-node-app
     spec:
       containers:
-      - name: vuln-node-app
-        image: lab-node:v1
-        ports:
-        - containerPort: 9090
+        - name: vuln-node-app
+          image: lab-node:v1
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 9090
+          readinessProbe:
+            httpGet:
+              path: /?input=ready
+              port: 9090
+            initialDelaySeconds: 2
+            periodSeconds: 2
 ---
 apiVersion: v1
 kind: Service
