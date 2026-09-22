@@ -1,0 +1,14 @@
+rules:
+  - id: lasalle-reflected-user-input
+    message: User-controlled query data reaches res.send() without output encoding.
+    severity: WARNING
+    languages: [javascript]
+    mode: taint
+    pattern-sources:
+      - pattern: $REQ.query.$PARAM
+    pattern-sinks:
+      - pattern: $RES.send(...)
+    metadata:
+      category: security
+      technology: [express]
+      lab: LaSalleSDLC
